@@ -1,0 +1,23 @@
+<?php
+
+/**
+ * Create new direct_upload_files table to track audio & video files
+ * in order to upload them later to youtube or sound cloud
+ */
+function misc_update_1() {
+  $direct_upload_files = array(
+    'description' => 'List all files to be uploaded to SoundCloud or Youtube and its upload status',
+    'fields' => array(
+      'fid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE),
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE),
+      'status' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'description' => '0 is Pending, 1 is processing, 2 is finished'),
+  	  'id' => array('type' => 'varchar', 'length' => 256, 'not null' => TRUE, 'default' => '', 'description' => 'media file key on the remote server'),
+      'upload_status' => array('type' => 'int', 'unsigned' => TRUE, 'default' => 0, 'description' => '0 is rejected, 1 is accepted'),
+  	  'upload_status_reason' => array('type' => 'varchar', 'length' => 256, 'not null' => TRUE, 'default' => ''),
+      'mapped_fid' => array('type' => 'int', 'unsigned' => TRUE),
+    ),
+    'primary key' => array('nid', 'fid'),
+  );
+
+  db_create_table('direct_upload_files', $direct_upload_files);
+}

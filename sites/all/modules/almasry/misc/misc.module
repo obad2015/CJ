@@ -1,0 +1,429 @@
+<?php
+
+/**
+ * Implments hook_init
+ */
+function misc_init() {	
+  ctools_include('modal');
+  ctools_modal_add_js();
+
+  drupal_add_js(drupal_get_path('module', 'misc') . '/js/misc.js',
+    array('scope' => 'footer', 'group' => 'theme'));
+}
+
+/**
+ * Implement hook_views_api().
+ */
+function misc_views_api() {
+  return array(
+    'api' => 2,
+  );
+}
+
+/**
+ * Implments hook_menu
+ */
+function misc_menu() {
+  // modal to node media fields, ctools modal js must be added to parent page
+  $items['manage/%ctools_js/contribution/%node'] = array(
+    'page callback' => 'misc_preview_contribution_modal',
+    'page arguments' => array(1,3),
+    'access callback' => TRUE,			// TODO: create proper callback based on role/permission
+  );
+
+  $items['masry/%ctools_js/contribution-status/%node'] = array(
+    'page callback' => 'misc_flib_contribution_publish_status',
+    'page arguments' => array(1, 3),
+    'access callback' => TRUE,
+  );
+
+  $items['masry/%ctools_js/campain-status/%taxonomy_term'] = array(
+    'page callback' => 'misc_flib_campaign_status',
+    'page arguments' => array(1, 3),
+    'access callback' => TRUE,
+  );
+
+  $items['masry/%ctools_js/campain-main/%taxonomy_term'] = array(
+    'page callback' => 'misc_flib_campaign_main',
+    'page arguments' => array(1, 3),
+    'access callback' => TRUE,
+  );
+
+  // manage compaings, and adjust the active one, we don't use this screen yet
+  $items['manage/test'] = array(
+    'page callback' => 'manage_taxonomy_page',
+    'access callback' => TRUE,			// TODO: create proper callback based on role/permission
+  );
+
+
+  $items['youtube/browser/upload'] = array(
+    'page callback' => 'youtube_direct_upload_page',
+    'access callback' => TRUE,
+    'file' => 'includes/youtube/youtube.inc'
+  );
+
+  return $items;
+}
+
+
+/**
+ * Call back for a custom menu item
+ * returns ctools modal of node media field if possible, otherwise it just redirect to a page
+ * with media field renderd to it
+ * 
+ * @param $js is ctools modal js enabled ?
+ * @param $node to node to render its media field
+ */
+function misc_preview_contribution_modal($js = FALSE, $node) {
+  $delta = arg(4);
+  $field_name = 'field_media';
+
+  if (is_numeric($delta)) {
+    $node->{$field_name}['und'] = array(
+      $node->{$field_name}['und'][$delta]
+    );
+  }
+
+  $output = field_view_field('node', $node, $field_name, 'full');
+  $title = $node->title;
+
+  if ($js) {
+    ctools_modal_render($title, $output);
+  }
+  else {
+    drupal_set_title($title);
+    print  drupal_render($output);
+  }
+}
+
+
+function manage_taxonomy_page() {
+  $output = array();
+  //fetch the taxonomy terms from compaigns vocabulary
+  $taxonomyQuery = new EntityFieldQuery();
+
+  $taxonomyTerms = $taxonomyQuery->entityCondition('entity_type', 'taxonomy_term')
+    ->propertyCondition('vid', 2) //change 2 to any vocabulary ID
+    ->execute();
+
+  foreach($taxonomyTerms['taxonomy_term'] as $term) {
+    $output[$term->tid] = taxonomy_term_view(taxonomy_term_load($term->tid));
+  }
+
+  return drupal_render($output);
+}
+
+
+function misc_form_contribution_node_form_alter(&$form, &$form_state) {
+  global $user;
+
+  // this is to fix a disqus bug, an additional 
+  // empty tab is shown to unauthorized users
+  if (!user_access('toggle disqus comments') && !user_access('administer comments')) {
+    hide($form['comment_settings']);	
+  }
+
+
+  if (is_numeric(arg(3))) {
+    $form['field_topic']['und']['#default_value'] = arg(3);
+  $form['field_topic']['#default_value'] = arg(3);
+    $form['field_topic']['und']['#disabled'] = TRUE;
+  }
+  elseif ($user->uid != 1) {
+    drupal_set_message(t('Please choose campaign to add contribution to'), 'warning');
+    drupal_goto('campaigns/all');
+  }
+
+  //print_r($form);
+}
+
+/**
+ * Callback for ajax request
+ * 
+ * flib campaign active/suspended status
+ * 
+ * @param $js
+ * @param $term
+ */
+ function misc_flib_campaign_status($js = FALSE, $term) {
+   $msg = '';
+   $new_label = '';
+
+   if ($term->field_status['und'][0]['value']) {
+     $term->field_status['und'][0]['value'] = 0;
+     $msg = $term->name . t(' is now Suspended');
+     $new_label = t('Activate');
+   }
+   else {
+     $term->field_status['und'][0]['value'] = 1;
+     $msg = $term->name . t(' is now Activated');
+     $new_label = t('Suspend');
+   }
+
+   taxonomy_term_save($term);
+     
+     if ($js) {
+       $commands = array();
+   $commands[] = ajax_command_alert($msg);
+   $commands[] = ajax_command_html('.campaign-status-' . $term->tid, $new_label);
+
+   print ajax_render($commands);
+     }
+     else {
+       drupal_set_message($msg);
+   drupal_goto('manage/campaign');
+     }
+ }
+
+/**
+ * Callback for ajax request
+ * 
+ * make a campaign a main one
+ * @param  $js
+ * @param  $term
+ */
+function misc_flib_campaign_main($js = FALSE, $term) {
+  $msg = '';
+  $new_label = '';
+
+// demoting any other compaigns from being the main one
+$tids = db_select('field_data_field_is_current_topic', 'ict')
+  ->fields('ict', array('entity_id'))
+  ->condition('field_is_current_topic_value', 1)
+  ->execute();
+foreach ($tids as $row) {
+  $demoted_term = taxonomy_term_load($row->entity_id);
+  $demoted_term->field_is_current_topic['und'][0]['value'] = 0;
+
+  taxonomy_term_save($demoted_term);
+}
+
+  // setting the current item to be the main campaign
+  $term->field_is_current_topic['und'][0]['value'] = 1;
+$msg = $term->name . t(' is now The main Comapaign');
+
+if (!$term->field_status['und'][0]['value']) {
+  $term->field_status['und'][0]['value'] = 1;
+  $msg .= t('; also it is now activated ');
+}
+
+taxonomy_term_save($term);
+
+
+
+  if ($js) {
+    $commands = array();
+    $commands[] = ajax_command_alert($msg);
+    $commands[] = ajax_command_remove('.campaign-is-main-' . $term->tid);
+    
+    print ajax_render($commands);
+  }
+  else {
+    drupal_set_message($msg);
+    drupal_goto('manage/campaign');
+  }
+}
+
+
+/**
+ * Callback for ajax request
+ * 
+ * @param $js
+ * @param $contribution
+ */
+function misc_flib_contribution_publish_status($js = FALSE, $contribution) {
+  $output = '';
+  $label = '';
+
+  if ($contribution->status) {
+    $contribution->status = 0;
+    $label = t('publish');
+  }
+  else {
+    $contribution->status = 1;
+    $label = t('unpublish');
+  }
+
+  $output = l($label, 'masry/nojs/contribution-status/' . $contribution->nid,
+    array('attributes' => array('class' => array('use-ajax', 'contributions-status-' . $contribution->nid))));
+
+
+  node_save($contribution);
+
+  if ($js) {
+    $commands = array();
+    $commands[] = ajax_command_html('.publish-' . $contribution->nid, $output);
+
+    print ajax_render($commands);
+  }
+  else {
+    // 		drupal_set_message($msg);
+    // 		drupal_goto('manage/campaign');
+  }
+}
+
+
+/**
+ * Implments hook_node_insert
+ */
+function misc_node_insert($node) {
+  // 1. list all fids
+  $fids = array();
+  foreach ($node->field_media['und'] as $key => $file) {
+    $fids[] = $file['fid'];
+  }
+
+  // 2. check for audio and videos that are file uplods (not youtube embeds or soundcloud embeds) 
+  $to_process_items = db_select('file_managed', 'fm')
+    ->fields('fm', array('fid', 'filename', 'filemime'))
+    ->condition('fid', $fids, 'IN')
+    ->condition('filesize', 0, '>')
+    ->condition(db_or()->condition('filemime', 'audio/%', 'LIKE')->condition('filemime', 'video/%', 'LIKE'))
+    ->execute()
+    ->fetchAllAssoc('fid');
+
+  // 3. store the items that will need further processing in our table & notify user
+  $videos = array();
+  $audios = array();
+  $msg = array();
+  foreach ($to_process_items as $fid => $item) {
+    db_insert('direct_upload_files')
+      ->fields(array(
+        'fid' => $fid,
+        'nid' => $node->nid,
+      ))
+      ->execute();
+
+    if (strpos($item->filemime, 'video') !== FALSE) {
+      $videos[] = $item->filename;
+    }
+    else {
+      $audios[] = $item->filename;
+    }
+  }
+
+  if (count($videos) > 0) {
+    $msg[] = implode(', ', $videos) . ' are pending upload to Youtube';
+  }
+  if (count($audios) > 0) {
+    $msg[] = implode(', ', $audios) . ' are pending upload to Soundcloud';
+  }
+
+  // set dummy drupal message for testing
+  // TODO replace with a nicer message before going live
+  drupal_set_message(implode(' & ', $msg));
+}
+
+/**
+ * Implments hook_cron
+ */
+function misc_cron() {
+  $query = db_select('direct_upload_files', 'duf');
+  $query->join('file_managed', 'fm', 'fm.fid = duf.fid');
+
+  $items = $query->fields('duf', array('fid', 'nid', 'status', 'id', 'mapped_fid'))
+    ->fields('fm', array('filename', 'uri', 'filemime'))
+    ->condition('duf.status', array(0, 1), 'IN')
+    ->execute()
+    ->fetchAll();
+
+  foreach ($items as $item) {
+
+    // 1. Video files
+    if (strpos($item->filemime, 'video') !== FALSE) {
+      // contains youtube upload logic
+      ctools_include('youtube', 'misc', 'includes/youtube');
+      $upload_function = 'youtube_upload_video';
+
+      // this handler will parse video url and generate system URI
+      ctools_include('MediaInternetYouTubeHandler', 'media_youtube', 'includes');
+      $handler = new MediaInternetYouTubeHandler('');
+    }
+    // 2. Audio files
+    else {
+      // contain sound cloud upload logic
+      ctools_include('soundcloud', 'misc', 'includes/youtube');
+      $upload_function = 'almasry_soundcloud_upload_audio';
+
+      // this handler will parse track url and generate system URI
+      ctools_include('MediaInternetSoundCloudHandler', 'media_soundcloud', 'includes');
+      $handler = new MediaInternetSoundCloudHandler('');
+    }
+
+    $node = node_load($item->nid);
+
+    // item requires uploading
+    if ($item->status == 0) {
+      // set item title and real path
+      $item->title = $node->title;
+      $item->path = drupal_realpath($item->uri);
+
+      // upload the item
+      $embed_item = $upload_function($item);
+
+      // if upload is successfull
+      if (is_object($embed_item)) {
+        // create a new file entry for the newly uploaded vide
+        $uri = $handler->parse($embed_item->url);
+        $file = file_uri_to_object($uri, TRUE);
+        $file->filename = $item->filename;
+        $file = file_save($file);
+
+        // map the old file to the new file
+        // but still, we won't add it to the node till it is accepted
+        db_update('direct_upload_files')
+          ->condition('nid', $item->nid)
+          ->condition('fid', $item->fid)
+          ->fields(array(
+            'status' => 1,
+            'mapped_fid' => $file->fid,
+            'id' => $embed_item->id
+          ))
+          ->execute();
+      }
+    }
+
+    // item require status update, it is now in processing state
+    elseif ($item->status == 1) {
+      $status_function = $upload_function . '_status';
+      $status = $status_function($item->id);
+
+      if (is_object($status)) {
+        db_update('direct_upload_files')
+          ->condition('nid', $item->nid)
+          ->condition('fid', $item->fid)
+          ->fields(array(
+            'status' => $status->status,
+            'upload_status' => $status->upload_status,
+            'upload_status_reason' => $status->upload_status_reason
+          ))
+          ->execute();
+
+        // if the file was accepted, update the node and replace the video file
+        // with the youtube embed
+        if ($status->upload_status  == 1) {
+          misc_replace_media_file($node, $item->fid, $item->mapped_fid);
+        }
+      }
+    }
+
+  }
+}
+
+
+  function misc_replace_media_file($node, $fid, $mapped_fid) {
+    // replace older file with new one
+    foreach ($node->field_media['und'] as $delta => $file) {
+      if ($file['fid'] == $fid) {
+        // load the new file
+        $mapped_file = file_load($mapped_fid);
+
+        foreach ($mapped_file as $key => $value) {
+          $node->field_media['und'][$delta][$key] = $value;    
+        }
+
+        node_save($node);
+        return;
+      }
+    }
+  }

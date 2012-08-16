@@ -1,0 +1,9 @@
+name = Almasry Alyoum Misc
+description = "Misc functionality for Almasry Alyoum UGC Site."
+package = Almasry Alyoum 
+core = 7.x
+
+
+files[] = handlers/misc_handler_filter_media_field.inc
+files[] = includes/misc.views_default.inc
+files[] = misc.views.inc

@@ -30,3 +30,11 @@ xmlrpc.php
 /scripts
 /themes
 
+
+
+#eclipse project files
+.buildpath
+.gitignore.swp
+.project
+.settings/
+

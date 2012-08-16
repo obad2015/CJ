@@ -1,0 +1,215 @@
+_plugin_query_default Object
+(
+ [table_queue] => Array
+ (
+  [node] => Array
+  (
+   [alias] => node
+   [table] => node
+   [relationship] => node
+   [join] => 
+  )
+  [field_data_field_media] => Array
+  (
+   [table] => field_data_field_media
+   [num] => 1
+   [alias] => field_data_field_media
+   [join] => views_join Object
+   (
+    [table] => field_data_field_media
+    [left_table] => node
+    [left_field] => nid
+    [field] => entity_id
+    [extra] => Array
+    (
+     [0] => Array
+     (
+      [field] => entity_type
+      [value] => node
+     )
+     [1] => Array
+     (
+      [field] => deleted
+      [value] => 0
+      [numeric] => 1
+     )
+    )
+    [type] => LEFT
+    [definition] => Array
+   (
+    [left_field] => nid
+    [field] => entity_id
+    [extra] => Array
+    (
+     [0] => Array
+     (
+      [field] => entity_type
+      [value] => node
+     )
+     [1] => Array
+     (
+      [field] => deleted
+      [value] => 0
+      [numeric] => 1
+     )
+    )
+    [table] => field_data_field_media
+    [left_table] => node
+   )
+   [extra_type] => AND
+   [adjusted] => 1
+   )
+   [relationship] => node
+   )
+   [file_managed] => Array
+   (
+    [table] => file_managed
+    [num] => 1
+    [alias] => file_managed
+    [join] => views_join Object
+    (
+     [table] => file_managed
+     [left_table] => field_data_field_media
+     [left_field] => field_media_fid
+     [field] => fid
+     [extra] => Array
+     (
+     )
+     [type] => LEFT
+     [definition] => Array
+     (
+     )
+     [extra_type] => AND
+     [adjusted] => 1
+    )
+    [relationship] => node
+   )
+   )
+   [tables] => Array
+   (
+    [node] => Array
+    (
+     [node] => Array
+     (
+      [count] => 1
+      [alias] => node
+     )
+     [field_data_field_media] => Array
+     (
+      [count] => 1
+      [alias] => field_data_field_media
+     )
+     [file_managed] => Array
+     (
+      [count] => 1
+      [alias] => file_managed
+     )
+    )
+   )
+   [relationships] => Array
+   (
+    [node] => Array
+    (
+     [link] => 
+     [table] => node
+     [alias] => node
+     [base] => node
+    )
+   )
+   [where] => Array
+   (
+    [1] => Array
+    (
+     [conditions] => Array
+     (
+      [0] => Array
+      (
+       [field] => node.status
+       [value] => 1
+       [operator] => =
+      )
+      [1] => Array
+      (
+       [field] => node.type
+       [value] => Array
+       (
+        [0] => contribution
+       )
+       [operator] => in
+      )
+      [2] => Array
+      (
+       [field] => field_data_field_media.field_media_fid
+       [value] => 
+       [operator] => IS NOT NULL
+      )
+      [3] => Array
+      (
+       [field] => file_managed.uri
+       [value] => youtube%
+       [operator] => LIKE
+      )
+      )
+  [args] => Array
+(
+)
+  [type] => AND
+  )
+  )
+  [having] => Array
+(
+)
+  [group_operator] => AND
+  [orderby] => Array
+(
+)
+  [groupby] => Array
+(
+)
+  [header] => Array
+(
+)
+  [distinct] => 
+  [has_aggregate] => 
+  [get_count_optimized] => 
+  [pager] => 
+  [field_aliases] => Array
+(
+)
+  [tags] => Array
+(
+)
+  [view] => 
+  [display] => 
+  [plugin_type] => query
+  [options] => Array
+  (
+   [disable_sql_rewrite] => 0
+   [distinct] => 0
+   [slave] => 0
+   [query_comment] => 
+  )
+  [definition] => Array
+  (
+   [title] => SQL Query
+   [help] => Query will be generated and run using the Drupal database API.
+   [handler] => views_plugin_query_default
+   [module] => views
+   [theme path] => sites/all/modules/contrib/views/theme
+   [theme file] => theme.inc
+   [path] => sites/all/modules/contrib/views/plugins
+   [file] => views_plugin_query_default.inc
+   [parent] => parent
+   [name] => views_query
+  )
+  [is_plugin] => 1
+  [base_table] => node
+  [base_field] => nid
+  [count_field] => Array
+  (
+   [table] => node
+   [field] => nid
+   [alias] => nid
+   [count] => 1
+  )
+  )
