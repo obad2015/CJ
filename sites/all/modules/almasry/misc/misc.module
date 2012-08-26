@@ -26,34 +26,40 @@ function misc_views_api() {
 function misc_menu() {
   // modal to node media fields, ctools modal js must be added to parent page
   $items['manage/%ctools_js/contribution/%node'] = array(
+    'description' => 'Modalframe link, will list node meda files in a popup',
     'page callback' => 'misc_preview_contribution_modal',
     'page arguments' => array(1,3),
     'access callback' => TRUE,			// TODO: create proper callback based on role/permission
   );
 
   $items['masry/%ctools_js/contribution-status/%node'] = array(
+    'description' => 'Ajax callback, FLIPS contribution publish status',
     'page callback' => 'misc_flib_contribution_publish_status',
     'page arguments' => array(1, 3),
     'access callback' => TRUE,
   );
 
+  $items['masry/%ctools_js/contribution-promote/%node'] = array(
+    'description' => 'Ajax callback, FLIPS node promoted to frontpage',
+    'page callback' => 'misc_flib_contribution_promote_status',
+    'page arguments' => array(1, 3),
+    'access callback' => TRUE,
+  );
+
   $items['masry/%ctools_js/campain-status/%taxonomy_term'] = array(
+    'description' => 'Ajax callback, FLIPS campaign Activate/Suspend Status',
     'page callback' => 'misc_flib_campaign_status',
     'page arguments' => array(1, 3),
     'access callback' => TRUE,
   );
 
   $items['masry/%ctools_js/campain-main/%taxonomy_term'] = array(
+    'description' => 'Ajax callback, Set campagin to main status, it also remove the main status from any other campaigns',
     'page callback' => 'misc_flib_campaign_main',
     'page arguments' => array(1, 3),
     'access callback' => TRUE,
   );
 
-  // manage compaings, and adjust the active one, we don't use this screen yet
-  $items['manage/test'] = array(
-    'page callback' => 'manage_taxonomy_page',
-    'access callback' => TRUE,			// TODO: create proper callback based on role/permission
-  );
 
 
   $items['youtube/browser/upload'] = array(
@@ -62,12 +68,20 @@ function misc_menu() {
     'file' => 'includes/youtube/youtube.inc'
   );
 
+  $items['suggest-campaign/%ctools_js'] = array(
+    'title' => t('Suggest Campaign'),
+    'page callback' => 'suggest_campaign',
+    'page arguments' => array(1),
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+
   return $items;
 }
 
 
 /**
- * Call back for a custom menu item
+ * Callback for a custom menu item
  * returns ctools modal of node media field if possible, otherwise it just redirect to a page
  * with media field renderd to it
  * 
@@ -96,24 +110,6 @@ function misc_preview_contribution_modal($js = FALSE, $node) {
   }
 }
 
-
-function manage_taxonomy_page() {
-  $output = array();
-  //fetch the taxonomy terms from compaigns vocabulary
-  $taxonomyQuery = new EntityFieldQuery();
-
-  $taxonomyTerms = $taxonomyQuery->entityCondition('entity_type', 'taxonomy_term')
-    ->propertyCondition('vid', 2) //change 2 to any vocabulary ID
-    ->execute();
-
-  foreach($taxonomyTerms['taxonomy_term'] as $term) {
-    $output[$term->tid] = taxonomy_term_view(taxonomy_term_load($term->tid));
-  }
-
-  return drupal_render($output);
-}
-
-
 function misc_form_contribution_node_form_alter(&$form, &$form_state) {
   global $user;
 
@@ -125,16 +121,19 @@ function misc_form_contribution_node_form_alter(&$form, &$form_state) {
 
 
   if (is_numeric(arg(3))) {
-    $form['field_topic']['und']['#default_value'] = arg(3);
-  $form['field_topic']['#default_value'] = arg(3);
-    $form['field_topic']['und']['#disabled'] = TRUE;
+    $term = taxonomy_term_load(arg(3));
+    if ($term->field_status['und'][0]['value'] == 2) {
+      drupal_set_title(t('Step 2: Create Contribution'));  
+    }
+    
+      $form['field_topic']['und']['#default_value'] = arg(3);
+    $form['field_topic']['#default_value'] = arg(3);
+      $form['field_topic']['und']['#disabled'] = TRUE;
   }
   elseif ($user->uid != 1) {
     drupal_set_message(t('Please choose campaign to add contribution to'), 'warning');
     drupal_goto('campaigns/all');
   }
-
-  //print_r($form);
 }
 
 /**
@@ -149,15 +148,24 @@ function misc_form_contribution_node_form_alter(&$form, &$form_state) {
    $msg = '';
    $new_label = '';
 
-   if ($term->field_status['und'][0]['value']) {
-     $term->field_status['und'][0]['value'] = 0;
-     $msg = $term->name . t(' is now Suspended');
-     $new_label = t('Activate');
-   }
-   else {
+   switch ($term->field_status['und'][0]['value']) {
+   case 0:
      $term->field_status['und'][0]['value'] = 1;
      $msg = $term->name . t(' is now Activated');
      $new_label = t('Suspend');
+     break;
+
+   case 1:
+     $term->field_status['und'][0]['value'] = 0;
+     $msg = $term->name . t(' is now Suspended');
+     $new_label = t('Activate [Suspended]');
+     break;
+
+   case 2:
+     $term->field_status['und'][0]['value'] = 1;
+     $msg = $term->name . t(' is now Activated');
+     $new_label = t('Suspend');
+     break;
    }
 
    taxonomy_term_save($term);
@@ -186,28 +194,28 @@ function misc_flib_campaign_main($js = FALSE, $term) {
   $msg = '';
   $new_label = '';
 
-// demoting any other compaigns from being the main one
-$tids = db_select('field_data_field_is_current_topic', 'ict')
-  ->fields('ict', array('entity_id'))
-  ->condition('field_is_current_topic_value', 1)
-  ->execute();
-foreach ($tids as $row) {
-  $demoted_term = taxonomy_term_load($row->entity_id);
-  $demoted_term->field_is_current_topic['und'][0]['value'] = 0;
+  // demoting any other compaigns from being the main one
+  $tids = db_select('field_data_field_is_current_topic', 'ict')
+    ->fields('ict', array('entity_id'))
+    ->condition('field_is_current_topic_value', 1)
+    ->execute();
+  foreach ($tids as $row) {
+    $demoted_term = taxonomy_term_load($row->entity_id);
+    $demoted_term->field_is_current_topic['und'][0]['value'] = 0;
 
-  taxonomy_term_save($demoted_term);
-}
+    taxonomy_term_save($demoted_term);
+  }
 
   // setting the current item to be the main campaign
   $term->field_is_current_topic['und'][0]['value'] = 1;
-$msg = $term->name . t(' is now The main Comapaign');
+  $msg = $term->name . t(' is now The main Comapaign');
 
-if (!$term->field_status['und'][0]['value']) {
-  $term->field_status['und'][0]['value'] = 1;
-  $msg .= t('; also it is now activated ');
-}
+  if (!$term->field_status['und'][0]['value']) {
+    $term->field_status['und'][0]['value'] = 1;
+    $msg .= t('; also it is now activated ');
+  }
 
-taxonomy_term_save($term);
+  taxonomy_term_save($term);
 
 
 
@@ -215,7 +223,7 @@ taxonomy_term_save($term);
     $commands = array();
     $commands[] = ajax_command_alert($msg);
     $commands[] = ajax_command_remove('.campaign-is-main-' . $term->tid);
-    
+
     print ajax_render($commands);
   }
   else {
@@ -264,13 +272,55 @@ function misc_flib_contribution_publish_status($js = FALSE, $contribution) {
 
 
 /**
+ * Callback for ajax request
+ *
+ * @param $js
+ * @param $contribution
+ */
+function misc_flib_contribution_promote_status($js = FALSE, $contribution) {
+  $output = '';
+  $label = '';
+
+  if ($contribution->promote) {
+    $contribution->promote = 0;
+    $label = t('Promote');
+  }
+  else {
+    $contribution->promote = 1;
+    $label = t('Demote');
+  }
+
+  $output = l($label, 'masry/nojs/contribution-promote/' . $contribution->nid,
+    array('attributes' => array('class' => array('use-ajax', 'contributions-promote-' . $contribution->nid))));
+
+
+  node_save($contribution);
+
+  if ($js) {
+    $commands = array();
+    $commands[] = ajax_command_html('.promote-' . $contribution->nid, $output);
+
+    print ajax_render($commands);
+  }
+  else {
+
+  }
+}
+
+
+/**
  * Implments hook_node_insert
+ * we want keep a list of all files that should be uploaded later 
  */
 function misc_node_insert($node) {
   // 1. list all fids
   $fids = array();
   foreach ($node->field_media['und'] as $key => $file) {
     $fids[] = $file['fid'];
+  }
+
+  if (!count($fids)) {
+    return;
   }
 
   // 2. check for audio and videos that are file uplods (not youtube embeds or soundcloud embeds) 
@@ -411,19 +461,72 @@ function misc_cron() {
 }
 
 
-  function misc_replace_media_file($node, $fid, $mapped_fid) {
-    // replace older file with new one
-    foreach ($node->field_media['und'] as $delta => $file) {
-      if ($file['fid'] == $fid) {
-        // load the new file
-        $mapped_file = file_load($mapped_fid);
+function misc_replace_media_file($node, $fid, $mapped_fid) {
+  // replace older file with new one
+  foreach ($node->field_media['und'] as $delta => $file) {
+    if ($file['fid'] == $fid) {
+      // load the new file
+      $mapped_file = file_load($mapped_fid);
 
-        foreach ($mapped_file as $key => $value) {
-          $node->field_media['und'][$delta][$key] = $value;    
-        }
-
-        node_save($node);
-        return;
+      foreach ($mapped_file as $key => $value) {
+        $node->field_media['und'][$delta][$key] = $value;
       }
+
+      node_save($node);
+      return;
     }
   }
+}
+
+/**
+ * Implments hook_form_FORM_ID_alter
+ * we want to hide some fields for the contributer when he is suggesting a campaign
+ * @param unknown_type $form
+ * @param unknown_type $form_state
+ * @param unknown_type $form_id
+ */
+function misc_form_taxonomy_form_term_alter(&$form, &$form_state, $form_id) {  
+  // if this a campaign creation form
+  if (is_array($form['#term']) && !is_numeric($form['#term']['tid']) && $form['#term']['vocabulary_machine_name']  == 'campaign') {
+    global $user;
+
+    // 4 is the contributer role ID
+    if (in_array(4, array_keys($user->roles))) {
+      drupal_set_title(t('Step 1: Create Campaign'));
+
+      hide($form['field_status']);
+      hide($form['field_is_current_topic']);
+
+      // we add a new form submit handler
+      $form['#submit'][] = 'misc_taxonomy_form_term_submit';
+    }
+  }
+}
+
+/**
+ * Implments form_submit to redirect contributers after creating a campagin to creating node form
+ * we couldnt' use the form alter cause we needed the term ID
+ * @param $form
+ * @param $form_state
+ */
+function misc_taxonomy_form_term_submit($form, &$form_state) {
+  if (is_numeric($form_state['term']->tid)) {
+    $form_state['redirect'] = url('node/add/contribution/' . $form_state['term']->tid, array('absolute' => TRUE));
+  }
+}
+
+/**
+ * Implments hook_taxonomy_term_presave
+ * we want to set some default values when contributer is suggesting a term
+ * @param unknown_type $term
+ */
+function misc_taxonomy_term_presave($term) {
+  global $user;
+
+  // when a contributer is addign a campaign, we want make some changes
+  if ($term->vocabulary_machine_name == 'campaign' && in_array(4, array_keys($user->roles))) {
+
+    $term->field_is_current_topic['und'][0]['value'] = 0;        // NOT the main campaign
+    $term->field_status['und'][0]['value'] = 2;                  // status is suggested
+  }
+}
