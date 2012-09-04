@@ -60,8 +60,10 @@ function media_field_formatter_view($entity_type, $entity, $field, $instance, $l
   if ($display['type'] == 'media_large_icon') {
     foreach ($items as $delta => $item) {
       $element[$delta] = array(
-        '#theme' => 'media_formatter_large_icon',
-        '#file' => (object) $item,
+        'element' => array(
+          '#theme' => 'media_formatter_large_icon',
+          '#file' => (object)$item,
+        )
       );
     }
   }

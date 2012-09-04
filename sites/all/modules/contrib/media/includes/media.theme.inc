@@ -267,8 +267,16 @@ function template_preprocess_media_thumbnail(&$variables) {
  */
 function theme_media_formatter_large_icon($variables) {
   $file = $variables['file'];
-  $icon_dir = media_variable_get('icon_base_directory') . '/' . media_variable_get('icon_set');
+
+  if ($file->type == 'application') {
+    $icon_dir = NULL;
+  }
+  else {
+    $icon_dir = media_variable_get('icon_base_directory') . '/' . media_variable_get('icon_set');
+  }
+  
   $icon = file_icon_path($file, $icon_dir);
+  
   $variables['path'] = $icon;
   // theme_image() requires the 'alt' attribute passed as its own variable.
   // @see http://drupal.org/node/999338
