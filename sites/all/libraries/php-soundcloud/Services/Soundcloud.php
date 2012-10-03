@@ -701,6 +701,10 @@ class Services_Soundcloud
 
         return $response;
     }
+    
+    function some_mapping_function($track) {
+      return 'playlist[tracks][][id]=' . $track;
+    }
 
     /**
      * Update a existing playlist
@@ -717,9 +721,8 @@ class Services_Soundcloud
     public function updatePlaylist($playlistId, $trackIds, $optionalPostData = null)
     {
         $url = $this->_buildUrl('playlists/' . $playlistId);
-        $postData = array_map(function ($track) {
-            return 'playlist[tracks][][id]=' . $track;
-        }, $trackIds);
+        
+        $postData = array_map('some_mapping_function', $trackIds);
 
         if (is_array($optionalPostData)) {
             foreach ($optionalPostData as $key => $val) {

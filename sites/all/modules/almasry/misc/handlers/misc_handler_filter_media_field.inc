@@ -14,6 +14,7 @@ class misc_handler_filter_media_field extends views_handler_filter {
       'audio' => t('Audio'),
       'video' => t('Video'),
       'image' => t('Image'),
+      'application' => t('Other')
     );
   }
 
@@ -58,9 +59,8 @@ class misc_handler_filter_media_field extends views_handler_filter {
   }
 
   function query() {
-
     $val = is_array($this->value) ? $this->value['filter_media'] : $this->value;
-    
+
     if (empty($val) || $val == 'any') {
       return;
     }
@@ -71,7 +71,20 @@ class misc_handler_filter_media_field extends views_handler_filter {
       $join->construct('file_managed', 'field_data_field_media', 'field_media_fid', 'fid');
       $this->query->ensure_table('file_managed', $this->relationship, $join);
 
-       $this->query->add_where($this->options['group'], 'file_managed.type',  $val, 'LIKE');
+      // items with no media is considered application
+      // so when the views filter is set to image, we show both application and 
+      // [no media] node 
+      if ($val == 'application') {
+        $this->query->add_where(
+          $this->options['group'],
+          db_or()
+          ->condition('file_managed.type',  $val, 'LIKE')
+          ->condition('file_managed.type',  $val, 'IS NULL')
+        );
+      }
+      else {
+        $this->query->add_where($this->options['group'], 'file_managed.type',  $val, 'LIKE');
+      }
     }
   }
 }

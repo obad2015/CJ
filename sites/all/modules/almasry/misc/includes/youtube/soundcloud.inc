@@ -6,9 +6,6 @@ define('CLIENT_ID', '592200392b3f19b0ce9457a984778705');
 // Client Secret for app 
 define('CLIENT_SECRET', '866543fee3e7c2b790f76c540e5b7865');
 
-// soundcloud redirect URL
-define('REDIRECT_URL', 'http://localhost/masry7');
-
 // those two elements should NEVER be saved like this, this is for testing purposes only
 define('ACCESS_TOKEN', '1-22898-14519136-e383c7203b6b5b0');
 define('REFRESH_TOKEN', '1c0ffe8ead3dc797d594fb033ce68d57');
@@ -21,28 +18,43 @@ function almasry_authenticate_soundcloud() {
   $client = new Services_Soundcloud(CLIENT_ID, CLIENT_SECRET, REDIRECT_URL);
   
   // redirect user to authorize URL
-  drupal_goto($client->getAuthorizeUrl(), array('external' => TRUE));
+  drupal_goto($client->getAuthorizeUrl(array('score' => 'non-expiring')), array('external' => TRUE));
 }
 
 
 function almasry_authenticate_soundcloud_callback() { 
+  global $base_url;
+  global $user;
+  
   include_once libraries_get_path('php-soundcloud') . '/Services/Soundcloud.php' ;
   
   // create client object with app credentials
-  $client = new Services_Soundcloud(CLIENT_ID, CLIENT_SECRET, REDIRECT_URL);
+  $client = new Services_Soundcloud(CLIENT_ID, CLIENT_SECRET, $base_url . '/admin/config/system/cj/soundcloud-callback');
 
+ 
+  // get the access code and save it into variables
   $code = $_GET['code'];
+  $tokens = $client->accessToken($code);
   
-  $access_token = $client->accessToken($code); 
+  variable_set('soundcloud_access_token', $tokens['access_token']);
+  if (array_key_exists('refresh_token', $tokens)) {
+    variable_set('soundcloud_refresh_token', $tokens['refresh_token']);
+  }
+  
+  if ($user->uid == 1) {
+    drupal_set_message('access code token is updated to ' . $tokens['access_token']);
+  }
+  
+  drupal_goto(CJ_ADMIN_PATH);
 }
 
 
-function almasry_authenticated_username_soundcloud() {
+function almasry_soundcloud_authenticated_username() {
   include_once libraries_get_path('php-soundcloud') . '/Services/Soundcloud.php' ;
   
   // create client object and set access token
   $client = new Services_Soundcloud(CLIENT_ID, CLIENT_SECRET);
-  $client->setAccessToken(ACCESS_TOKEN);
+  $client->setAccessToken(variable_get('soundcloud_access_token', ''));
   
   // make an authenticated call
   $current_user = json_decode($client->get('me'));
@@ -114,16 +126,11 @@ function almasry_soundcloud_upload_audio_status($id) {
  * @return Services_Soundcloud object
  */
 function almasry_soundcloud_client() {
-//   static $client;
-//   if (is_object($client)) {
-//     return $client;
-//   }
-  
-  //almasry_soundcloud_refresh_token();
+  almasry_soundcloud_refresh_token();
   
   // create client object and set access token
   $client = new Services_Soundcloud(CLIENT_ID, CLIENT_SECRET);
-  $client->setAccessToken(ACCESS_TOKEN);
+  $client->setAccessToken(variable_get('soundcloud_access_token', ''));
   
   return $client;
 }
@@ -135,13 +142,18 @@ function almasry_soundcloud_client() {
 function almasry_soundcloud_refresh_token() {
   include_once libraries_get_path('php-soundcloud') . '/Services/Soundcloud.php' ;
   
-  // create client object with app credentials
-  $client = new Services_Soundcloud(CLIENT_ID, CLIENT_SECRET, REDIRECT_URL);
+  $refresh_token = variable_get('soundcloud_refresh_token', NULL);
   
-  $new_access_token = $client->accessTokenRefresh(REFRESH_TOKEN);
-  
-  $access_token = $new_access_token['access_token'];
-  $refresh_token = $new_access_token['refresh_token'];
+  // we can only refresh if we have previous refresh token
+  if ($refresh_token) {
+    // create client object with app credentials
+    $client = new Services_Soundcloud(CLIENT_ID, CLIENT_SECRET, REDIRECT_URL);
+    
+    $new_tokens = $client->accessTokenRefresh(variable_get('soundcloud_refresh_token', ''));
+    
+    variable_set('soundcloud_access_token', $new_tokens['access_token']);
+    variable_set('soundcloud_refresh_token', $new_tokens['refresh_token']);
+  }
 }
 
 

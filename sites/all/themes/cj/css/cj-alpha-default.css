@@ -1,0 +1,19 @@
+/* This file will hold styles for all layouts using the alpha grid (i.e. not the mobile layout). */
+/* upload file */
+body.page-media.page-media-browser{
+	min-width:0;
+}
+.page-media.page-media-browser .grid-24,
+.page-media.page-media-browser .container-24{
+	width:auto;
+}
+.page-media.page-media-browser #section-content #region-content{
+	padding:0;
+	margin:0
+}
+.page-media.page-media-browser #region-content{
+	width:auto;
+}
+.page-media.page-media-browser #region-sidebar-first{
+	display:none;
+}

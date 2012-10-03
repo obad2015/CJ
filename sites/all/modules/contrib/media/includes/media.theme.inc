@@ -269,7 +269,7 @@ function theme_media_formatter_large_icon($variables) {
   $file = $variables['file'];
 
   if ($file->type == 'application') {
-    $icon_dir = NULL;
+    $icon_dir = variable_get('misc_icon_base_directory', drupal_get_path('module', 'misc') . '/images/icons');
   }
   else {
     $icon_dir = media_variable_get('icon_base_directory') . '/' . media_variable_get('icon_set');

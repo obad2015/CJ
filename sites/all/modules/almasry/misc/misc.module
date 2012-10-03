@@ -1,5 +1,7 @@
 <?php
 
+define('CJ_ADMIN_PATH', 'admin/config/system/cj');
+
 /**
  * Implments hook_init
  */
@@ -10,6 +12,7 @@ function misc_init() {
   drupal_add_js(drupal_get_path('module', 'misc') . '/js/misc.js',
     array('scope' => 'footer', 'group' => 'theme'));
 }
+
 
 /**
  * Implement hook_views_api().
@@ -32,55 +35,68 @@ function misc_menu() {
     'access callback' => TRUE,			// TODO: create proper callback based on role/permission
   );
 
-  $items['masry/%ctools_js/contribution-status/%node'] = array(
-    'description' => 'Ajax callback, FLIPS contribution publish status',
-    'page callback' => 'misc_flib_contribution_publish_status',
-    'page arguments' => array(1, 3),
-    'access callback' => TRUE,
-  );
+//   $items['masry/%ctools_js/contribution-status/%node'] = array(
+//     'description' => 'Ajax callback, FLIPS contribution publish status',
+//     'page callback' => 'misc_flib_contribution_publish_status',
+//     'page arguments' => array(1, 3),
+//     'access callback' => TRUE,
+//   );
 
-  $items['masry/%ctools_js/contribution-promote/%node'] = array(
-    'description' => 'Ajax callback, FLIPS node promoted to frontpage',
-    'page callback' => 'misc_flib_contribution_promote_status',
-    'page arguments' => array(1, 3),
-    'access callback' => TRUE,
-  );
+//   $items['masry/%ctools_js/contribution-promote/%node'] = array(
+//     'description' => 'Ajax callback, FLIPS node promoted to frontpage',
+//     'page callback' => 'misc_flib_contribution_promote_status',
+//     'page arguments' => array(1, 3),
+//     'access callback' => TRUE,
+//   );
   
-  $items['masry/%ctools_js/contribution-workflow-state/%/%node'] = array(
+  $items['masry/%ctools_js/contribution-workflow-state/%/%node/%'] = array(
       'description' => 'Ajax callback, Change the node workflow state',
       'page callback' => 'misc_change_workflow_state',
-      'page arguments' => array(1, 3, 4),
+      'page arguments' => array(1, 3, 4, 5),
       'access callback' => TRUE,
   );
 
-  $items['masry/%ctools_js/campain-status/%taxonomy_term'] = array(
+  $items['masry/campain-status/%taxonomy_term/%'] = array(
     'description' => 'Ajax callback, FLIPS campaign Activate/Suspend Status',
     'page callback' => 'misc_flib_campaign_status',
-    'page arguments' => array(1, 3),
+    'page arguments' => array(2, 3),
     'access callback' => TRUE,
   );
 
-  $items['masry/campain-main/%taxonomy_term'] = array(
+  $items['masry/campain-main/%taxonomy_term/%'] = array(
     'description' => 'Ajax callback, Set campagin to main status, it also remove the main status from any other campaigns',
     'page callback' => 'misc_flib_campaign_main',
-    'page arguments' => array(2),
+    'page arguments' => array(2, 3),
     'access callback' => TRUE,
   );
-
-
 
   $items['youtube/browser/upload'] = array(
     'page callback' => 'youtube_direct_upload_page',
     'access callback' => TRUE,
     'file' => 'includes/youtube/youtube.inc'
   );
-
-  $items['suggest-campaign/%ctools_js'] = array(
-    'title' => t('Suggest Campaign'),
-    'page callback' => 'suggest_campaign',
-    'page arguments' => array(1),
-    'access callback' => TRUE,
-    'type' => MENU_CALLBACK,
+  
+  $items['admin/config/system/cj'] = array(
+      'title' => t('CJ Settings'),
+      'description' => t('Configure Citizin Journalizim.'),
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('cj_settings_form'),
+      'access arguments' => array('administer bakery'),
+   );
+  
+  $items['admin/config/system/cj/soundcloud-callback'] = array(
+      'title' => t('CJ Settings'),
+      'description' => t('Configure Citizin Journalizim.'),
+      'page callback' => 'almasry_authenticate_soundcloud_callback',
+      'file' => 'includes/youtube/soundcloud.inc',
+      'access callback' => TRUE
+  );
+  
+  $items['misc/related-media/%node'] = array(
+      'description' => t('Callback from ajax to retrieve a node related items'),
+      'page callback' => 'misc_related_media',
+      'page arguments' => array(2),
+      'access callback' => TRUE
   );
 
   return $items;
@@ -119,18 +135,30 @@ function misc_preview_contribution_modal($js = FALSE, $node) {
 
 function misc_form_contribution_node_form_alter(&$form, &$form_state) {
   global $user;
-
+  
   // this is to fix a disqus bug, an additional 
   // empty tab is shown to unauthorized users
   if (!user_access('toggle disqus comments') && !user_access('administer comments')) {
     hide($form['comment_settings']);	
   }
   
+  // hide revision infomration in node creation form
+  if (!is_numeric($form['nid']['#value'])) {
+    hide($form['revision_information']);
+  }
+  
+  // anon and contributers can't add tags
+  if (!$user->uid || in_array(4, $user->roles)) {
+    hide($form['field_tags']);
+  }
+  
+  // those fields are computed automatically on update
   hide($form['field_edit_status']);
-
+  hide($form['field_has_media']);
 
   // if we have campaign tid passed as arg 3
-  if (is_numeric(arg(3))) {
+  // and this is creation mode
+  if (is_numeric(arg(3)) && !is_numeric($form['nid']['#value'])) {
     $term = taxonomy_term_load(arg(3));
     // if this is a suggested campaign, then this is the second step of suggesting a campaign
     // change drupal title
@@ -140,10 +168,14 @@ function misc_form_contribution_node_form_alter(&$form, &$form_state) {
 
     $form['field_topic']['und']['#default_value'] = arg(3);
     $form['field_topic']['#default_value'] = arg(3);
-    $form['field_topic']['und']['#disabled'] = TRUE;
+    
+    // hide campaign in node creation
+    // field will still be rendered, but hidden by css in
+    $form['field_topic']['#prefix'] = '<div class="element-invisible" >';
+    $form['field_topic']['#suffix'] = '</div>';
   }
-  // if not root user and not edit form and - as else - no campaign defined
-  elseif ($user->uid != 1 && !isset($form['#node_edit_form'])) {
+  // if not root user and not edit form
+  elseif ($user->uid != 1 && strpos($_GET['q'], 'node/add/contribution') !== FALSE) {
     drupal_set_message(t('Please choose campaign to add contribution to'), 'warning');
     drupal_goto('campaigns/all');
   }
@@ -158,43 +190,38 @@ function misc_form_contribution_node_form_alter(&$form, &$form_state) {
  * @param $js
  * @param $term
  */
- function misc_flib_campaign_status($js = FALSE, $term) {
-   $msg = '';
-   $new_label = '';
+ function misc_flib_campaign_status($term, $token) {
+   $msg = NULL;
+   $new_label = NULL;
 
-   switch ($term->field_status['und'][0]['value']) {
-   case 0:
-     $term->field_status['und'][0]['value'] = 1;
-     $msg = $term->name . t(' is now Activated');
-     $new_label = t('Suspend');
-     break;
-
-   case 1:
-     $term->field_status['und'][0]['value'] = 0;
-     $msg = $term->name . t(' is now Suspended');
-     $new_label = t('Activate [Suspended]');
-     break;
-
-   case 2:
-     $term->field_status['und'][0]['value'] = 1;
-     $msg = $term->name . t(' is now Activated');
-     $new_label = t('Suspend');
-     break;
+   if (drupal_valid_token($token)) {
+     switch ($term->field_status['und'][0]['value']) {
+       case 0:
+         $term->field_status['und'][0]['value'] = 1;
+         $msg = $term->name . t(' is now Activated');
+         $new_label = t('Suspend');
+         break;
+    
+       case 1:
+         $term->field_status['und'][0]['value'] = 0;
+         $msg = $term->name . t(' is now Suspended');
+         $new_label = t('Activate [Suspended]');
+         break;
+    
+       case 2:
+         $term->field_status['und'][0]['value'] = 1;
+         $msg = $term->name . t(' is now Activated');
+         $new_label = t('Suspend');
+         break;
+     }
+     taxonomy_term_save($term);
+   }
+   else {
+    $msg = t('You have made unauthorized request'); 
    }
 
-   taxonomy_term_save($term);
-     
-     if ($js) {
-       $commands = array();
-   $commands[] = ajax_command_alert($msg);
-   $commands[] = ajax_command_html('.campaign-status-' . $term->tid, $new_label);
-
-   print ajax_render($commands);
-     }
-     else {
-       drupal_set_message($msg);
+   drupal_set_message($msg);
    drupal_goto('manage/campaign');
-     }
  }
 
 /**
@@ -204,20 +231,25 @@ function misc_form_contribution_node_form_alter(&$form, &$form_state) {
  * @param  $js
  * @param  $term
  */
-function misc_flib_campaign_main($term) {
-  $msg = '';
+function misc_flib_campaign_main($term, $token) {
+  $msg = NULL;
 
-  // setting the current item to be the main campaign
-  $term->field_is_current_topic['und'][0]['value'] = 1;
-  $msg = $term->name . t(' is now The main Comapaign');
-
-  if (!$term->field_status['und'][0]['value']) {
-    $term->field_status['und'][0]['value'] = 1;
-    $msg .= t('; also it is now activated ');
+  if (drupal_valid_token($token)) {
+    // setting the current item to be the main campaign
+    $term->field_is_current_topic['und'][0]['value'] = 1;
+    $msg = $term->name . t(' is now The main Comapaign');
+  
+    // if not active, make active
+    if ($term->field_status['und'][0]['value'] != 1) {
+      $term->field_status['und'][0]['value'] = 1;
+      $msg .= t('; also it is now activated ');
+    }
+    taxonomy_term_save($term);
+  }
+  else {
+    $msg = t('You have made unauthorized request'); 
   }
 
-  taxonomy_term_save($term);
-  
   drupal_set_message($msg);
   drupal_goto('manage/campaign');
 
@@ -364,15 +396,38 @@ function misc_node_insert($node) {
 /**
  * set the node edit status field to 'original' if it is new
  * 'edited' otherwise
- * @param unknown_type $node
+ * @param $node
  */
 function misc_node_presave($node) {
-  if (isset($node->is_new) && $node->is_new) {
-    $node->field_edit_status['und'][0]['value'] = 'original';
+  if ($node->type == 'contribution') {
+    // set edit status
+    if (isset($node->is_new) && $node->is_new) {
+      $node->field_edit_status['und'][0]['value'] = 'original';
+    }
+    elseif (isset($node->revision) && $node->revision){
+      $node->field_edit_status['und'][0]['value'] = 'edited';
+    }
+    
+    // set has media
+    if (isset($node->field_media['und'][0]['fid']) && is_numeric($node->field_media['und'][0]['fid'])) {
+      $node->field_has_media['und'][0]['value'] = 'has_media';
+    }
+    else {
+      $node->field_has_media['und'][0]['value'] = 'has_no_media';
+    }
+    
+    
+    // remove default image
+    // check if there is media content in this post
+    $fid = variable_get('media_default_file_custom', '');
+    foreach ($node->field_media['und'] as $delta => $file) {
+      if ($file['fid'] == $fid) {
+        unset($node->field_media['und'][$delta]);
+      }
+    }
   }
-  elseif (isset($node->revision) && $node->revision){
-    $node->field_edit_status['und'][0]['value'] = 'edited';
-  }
+  
+  
 }
 
 /**
@@ -413,7 +468,7 @@ function misc_cron() {
 
     $node = node_load($item->nid);
 
-    // item requires uploading
+    // STEP 1: item requires uploading
     if ($item->status == 0) {
       // set item title and real path
       $item->title = $node->title;
@@ -472,6 +527,12 @@ function misc_cron() {
 }
 
 
+/*
+ * after uploading videos to youtube, audios to soundcloud
+ * we need to update the node object to use the uploaded files from the remote sources
+ * 
+ * replaced the old local files to with new remote files
+ */
 function misc_replace_media_file($node, $fid, $mapped_fid) {
   // replace older file with new one
   foreach ($node->field_media['und'] as $delta => $file) {
@@ -484,7 +545,6 @@ function misc_replace_media_file($node, $fid, $mapped_fid) {
       }
 
       node_save($node);
-      return;
     }
   }
 }
@@ -510,8 +570,18 @@ function misc_form_taxonomy_form_term_alter(&$form, &$form_state, $form_id) {
 
       // we add a new form submit handler
       $form['#submit'][] = 'misc_taxonomy_form_term_submit';
+      $form['#validate'][] = 'misc_taxonomy_form_term_validate';
     }
   }
+}
+
+/**
+ * validate than the description is limited by 100 words
+ * @param $form
+ * @param $form_state
+ */
+function misc_taxonomy_form_term_validate($form, &$form_state) {
+  
 }
 
 /**
@@ -534,7 +604,7 @@ function misc_taxonomy_form_term_submit($form, &$form_state) {
 function misc_taxonomy_term_presave($term) {
   global $user;
 
-  // operations on campaign 
+  // operating on campaign 
   if ($term->vocabulary_machine_name == 'campaign') {
     // when a contributer is addign a campaign, we want to make some changes
     if (in_array(4, array_keys($user->roles))) {
@@ -561,19 +631,150 @@ function misc_taxonomy_term_presave($term) {
   }
 }
 
-function misc_change_workflow_state($js, $new_state, $node) {
+function misc_change_workflow_state($js, $new_state, $node, $token) {
   $output = '';
-  $label = '';
+  $msg = NULL;
+  $valid = TRUE;
   
-  workflow_execute_transition($node, $new_state);
+  if (drupal_valid_token($token)) {
+    workflow_execute_transition($node, $new_state);
+    $msg = t('Contribution updated successfully');
+  }
+  else {
+    $valid = FALSE;
+    $msg = t('You have done unauthorized request');
+  }
   
   if ($js) {
     $commands = array();
-    $commands[] = ajax_command_remove('.row-' . $node->nid);
-  
+    
+    if ($valid) {
+      $commands[] = ajax_command_remove('.row-' . $node->nid);
+    }
+    else {
+      $commands[] = ajax_command_alert(t('You have done unauthorized request'));
+    }
+    
     print ajax_render($commands);
   }
   else {
-  
+    drupal_set_message($msg);
+    drupal_goto('manage/contributions');
   }
+}
+
+/*
+ * Implments hook_field_prepare_view
+ * 
+ * setting default field value 
+ */
+function misc_entity_load($entities, $type) {
+  if ($type == 'node' ) {
+    foreach ($entities as $entity) {
+      //dsm($entity);
+      if ($entity->type == 'contribution' && !(arg(0) == 'node' && arg(2) == 'edit') && empty($entity->field_media)) {
+        $fid = variable_get('media_default_file_custom', '');
+        
+        if (is_numeric($fid)) {
+          $file = file_load($fid);
+          $file->display = TRUE;
+          
+          $entity->field_media['und'][0] = (array) $file;
+          $entity->field_media['und'][0]['description'] = 'not-fancy';
+        }
+      }
+    }
+  }
+}
+
+function cj_settings_form() {
+  
+  // Soundcloud  base URL
+  global $base_url;
+  ctools_include('soundcloud', 'misc', 'includes/youtube');
+  include_once libraries_get_path('php-soundcloud') . '/Services/Soundcloud.php' ;
+  $client = new Services_Soundcloud(CLIENT_ID, CLIENT_SECRET, $base_url . '/admin/config/system/cj/soundcloud-callback');
+  $form['soundcloud_authenticate'] = array(
+      '#type' => 'item',
+      '#markup' => l('Login to Scoundcloud', $client->getAuthorizeUrl(array('scope' => 'non-expiring')), array('external' => TRUE))
+  );
+  
+  $form['defaults'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('Defaults'),
+      '#collapsible' => TRUE,
+      '#collapsed' => FALSE,
+  );
+  
+  $form['defaults']['media_default_file'] = array(
+      '#title' => t('Default Contribution Image'),
+      '#description' => t('Default image to use when an contribution has no media attached to it.'),
+      '#type' => 'managed_file',
+      '#default_value' => variable_get('media_default_file_custom', ''), // Use different variable name for the variable, so it won't be overridden by system submit handler
+      '#upload_location' => 'public://custom/',
+  );
+  
+  // Perform our custom submit before system submit
+  $form['#submit'][] = 'custom_cj_settings_form_submit';
+  
+  $form = system_settings_form($form);
+  
+  return $form;
+}
+
+function custom_cj_settings_form_submit($form, &$form_state) { 
+  // Load the file via file.fid.
+  $file = file_load($form_state['values']['media_default_file']);
+  if ($file) {
+    $file->status = FILE_STATUS_PERMANENT;
+
+    file_save($file);
+    
+    variable_set('media_default_file_custom', $file->fid);
+
+    // Unset formstate value
+    unset($form_state['values']['media_default_file']); // make sure it is unset for system submit
+  }
+}
+
+function suggest_campaign_link() {
+  return l(t('Create Campaign'), 'admin/structure/taxonomy/campaign/add');
+}
+
+/**
+ * Implments hook_node_validate
+ * 
+ * Validates that contribution has either body or media is provided
+ */
+function misc_node_validate($node, $form, &$form_state) {
+  if ($node->type == 'contribution') {
+    // check if there is media content in this post
+    $media_exist = FALSE;
+    
+    $fid = variable_get('media_default_file_custom', '');
+    
+    foreach ($node->field_media['und'] as $delta => $file) {
+      
+      
+      if (!$media_exist) {
+        $media_exist = (isset($file['fid']) && $file['fid'] > 0);
+      }
+    }
+    
+    // check if there is text content in this post
+    $body_exist = (isset($node->body['und'][0]['value']) && strlen($node->body['und'][0]['value']) > 1); 
+
+    // if we have neither, ERROR
+    if (!$body_exist && !$media_exist) {
+      form_set_error('body', t('You must provide either a body or a media file'));  
+    }
+  }
+}
+
+function misc_related_media($node) {
+  // making sure term object is there 
+  $topic = field_get_items('node', $node, 'field_topic');
+  print views_embed_view('related_media', 'related_media', $topic[0]['tid']);
+   
+  exit;
 }
